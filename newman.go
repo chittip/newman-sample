@@ -92,7 +92,7 @@ func computeDeltaModularity(c1, c2 *Cluster, graph *Data) float64 {
 	return ((c1_2_edges / all_edges) + (c2_1_edges / all_edges) - 2*(c1_from_edges/all_edges)*(c2_from_edges/all_edges))
 }
 
-func computeModularity(c1, c2 *Cluster, graph *Data) float64 {
+func computeModularity(clusters map[*Cluster]bool, graph *Data) float64 {
 	/*
 		require:
 			- 総エッジ数
@@ -101,23 +101,27 @@ func computeModularity(c1, c2 *Cluster, graph *Data) float64 {
 			- クラスタ外エッジ数
 	*/
 
-	// compute number of edges
+	clss := []*Cluster{}
+	for cls, _ := range clusters {
+		clss = append(clss, cls)
+	}
+
+	q := 0.0
+
+	edges := graph.GetEdges()
 	all_edges := float64(len(graph.GetEdges()))
-	log.Println("all_edges:", all_edges)
+	for i := len(clss) - 1; 0 <= i; i-- {
+		clusterInEdge := countEdgesInCluster(clss[i])
+		clusterInOrOutEdge := 0.0
+		for _, edge := range edges {
+			if isInCluster(edge.Src, clss[i]) || isInCluster(edge.Dst, clss[i]) {
+				clusterInOrOutEdge += 1
+			}
+		}
+		q += ((clusterInEdge / all_edges) - math.Pow((clusterInOrOutEdge/all_edges), 2))
+	}
 
-	// compute number of edge in clusters
-	c1_edges := countEdgesInCluster(c1)
-	c2_edges := countEdgesInCluster(c2)
-	log.Println("c1_edges:", c1_edges)
-	log.Println("c2_edges:", c2_edges)
-
-	// compute nuber of edge between clusters
-	c1_from_edges := countEdgesBetweenClusters(c1, graph)
-	c2_from_edges := countEdgesBetweenClusters(c2, graph)
-	log.Println("c1_from_edges:", c1_from_edges)
-	log.Println("c2_from_edges:", c2_from_edges)
-
-	q := ((c1_edges / all_edges) - math.Pow((c1_from_edges/all_edges), 2)) + ((c2_edges / all_edges) - math.Pow((c2_from_edges/all_edges), 2))
+	// compute number of edges
 	return q
 }
 
@@ -176,11 +180,11 @@ func clustering(graph *Data) {
 	cluster_map := initClusters(graph)
 	cluster_map_b := initClusters(graph)
 
-	m := 0.0
-
 	// step2 : do newman method
 	max_pair := []*Cluster{}
 	max_delta := 0.0
+	max_modularity := 0.0
+
 	log.Println("before:", len(cluster_map))
 	for len(cluster_map) > 1 {
 		max_delta := 0.0
@@ -196,16 +200,15 @@ func clustering(graph *Data) {
 		}
 		log.Println("max delta:", max_delta)
 
-		if max_delta >= 0.0 {
-			merge_cluster := merge(max_pair, graph)
-			delete(cluster_map, max_pair[0])
-			delete(cluster_map, max_pair[1])
-			cluster_map[merge_cluster] = true
-		} else {
-			break
-		}
-		if max_delta > m {
-			m = max_delta
+		merge_cluster := merge(max_pair, graph)
+		delete(cluster_map, max_pair[0])
+		delete(cluster_map, max_pair[1])
+		cluster_map[merge_cluster] = true
+
+		modularity := computeModularity(cluster_map, graph)
+
+		if modularity > max_modularity {
+			max_modularity = modularity
 			cluster_map_b = map[*Cluster]bool{}
 			for k, v := range cluster_map {
 				cluster_map_b[k] = v
@@ -233,6 +236,7 @@ func clustering(graph *Data) {
 
 	// log.Println("after:", len(cluster_map))
 	log.Println("max delta:", max_delta)
+	log.Println("max modularity:", max_modularity)
 }
 
 func makeTestData() *Data {
@@ -273,12 +277,12 @@ func makeTestData() *Data {
 	data.Connect(NewNode("L"), NewNode("I"), 1.0)
 
 	// edges between clusters
-	//data.Connect(NewNode("G"), NewNode("A"), 1.0)
-	//data.Connect(NewNode("H"), NewNode("E"), 1.0)
+	data.Connect(NewNode("G"), NewNode("A"), 1.0)
+	data.Connect(NewNode("H"), NewNode("E"), 1.0)
 	data.Connect(NewNode("I"), NewNode("F"), 1.0)
-	//data.Connect(NewNode("A"), NewNode("G"), 1.0)
+	data.Connect(NewNode("A"), NewNode("G"), 1.0)
 	data.Connect(NewNode("E"), NewNode("H"), 1.0)
-	//data.Connect(NewNode("F"), NewNode("I"), 1.0)
+	data.Connect(NewNode("F"), NewNode("I"), 1.0)
 
 	// modularity : 0.8194444...
 	////c1 := new(Cluster)
